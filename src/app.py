@@ -157,7 +157,12 @@ async def claim_fee(
 
 @app.get("/call")
 async def call(
-    chain_id: int, for_: str, to: str, value: int, data: str, bg: BackgroundTasks
+    chain_id: int,
+    for_: str,
+    to: str,
+    data: str,
+    bg: BackgroundTasks,
+    value: int = 0,
 ) -> str:
     w3 = get_w3(chain_id)
     for_ = w3.to_checksum_address(for_)
