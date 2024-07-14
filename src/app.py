@@ -1,6 +1,7 @@
 import logging
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from eth_account import Account
 from web3 import AsyncWeb3
 from web3.contract import AsyncContract
@@ -11,6 +12,14 @@ logger = logging.getLogger("app")
 
 
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 factory_abi = [
     {"inputs": [], "stateMutability": "nonpayable", "type": "constructor"},
