@@ -115,6 +115,9 @@ def get_w3(chain_id: int) -> AsyncWeb3:
     return AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(RPCS[chain_id]))
 
 
+async def call_with_deploy(): ...
+
+
 async def claim_fee(
     tx_hash: str, tx_chain_id: int, fee_chain_id: int, fee_amount: float, from_: str
 ):
@@ -130,6 +133,8 @@ async def claim_fee(
             ["address", "uint256"], [OPERATOR.address, int(fee_amount * 1e6)]
         ).hex()[2:]
     )  # transfer(operator.address, fee_amount)
+
+    logger.info(f"transfer call: {data=}")
 
     try:
         raw_tx = await wallet.functions.operatorCall(
