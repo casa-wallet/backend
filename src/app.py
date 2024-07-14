@@ -115,17 +115,56 @@ def get_w3(chain_id: int) -> AsyncWeb3:
     return AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(RPCS[chain_id]))
 
 
-async def call_with_deploy(): ...
+async def get_wallet_address(chain_id: int, for_: str):
+    w3 = get_w3(chain_id)
+    factory: AsyncContract = w3.eth.contract(FACTORY, abi=factory_abi)
+    [deployed, from_] = await factory.functions.getWallet(for_, 0).call()
+    return (deployed, from_)
+
+
+async def call_with_deploy(chain_id: int, for_: str, to: str, data: str, value: int):
+    w3 = get_w3(chain_id)
+
+    (deployed, from_) = await get_wallet_address(chain_id, for_)
+    tx_params = {
+        "from": OPERATOR.address,
+        "nonce": await w3.eth.get_transaction_count(OPERATOR.address),
+    }
+
+    if deployed:
+        contract: AsyncContract = w3.eth.contract(from_, abi=wallet_abi)
+        raw_tx = await contract.functions.operatorCall(
+            [
+                await contract.functions.nonces(from_).call(),
+                chain_id,
+                from_,
+                to,
+                value,
+                data,
+            ]
+        ).build_transaction(tx_params)
+    else:
+        factory: AsyncContract = w3.eth.contract(FACTORY, abi=factory_abi)
+        raw_tx = await factory.functions.createWalletAndCall(
+            for_,
+            0,
+            [0, chain_id, from_, to, value, data],
+        ).build_transaction(tx_params)
+        tx_hash = await w3.eth.send_raw_transaction(
+            OPERATOR.sign_transaction(raw_tx).rawTransaction
+        )
+
+    tx_hash = await w3.eth.send_raw_transaction(
+        OPERATOR.sign_transaction(raw_tx).rawTransaction
+    )
+    return tx_hash.hex()
 
 
 async def claim_fee(
-    tx_hash: str, tx_chain_id: int, fee_chain_id: int, fee_amount: float, from_: str
+    tx_hash: str, tx_chain_id: int, fee_chain_id: int, fee_amount: float, for_: str
 ):
     tx_w3 = get_w3(tx_chain_id)
     await tx_w3.eth.wait_for_transaction_receipt(tx_hash)
-
-    fee_w3 = get_w3(fee_chain_id)
-    wallet = fee_w3.eth.contract(from_, abi=wallet_abi)
 
     data = (
         "0xa9059cbb"
@@ -135,25 +174,10 @@ async def claim_fee(
     )  # transfer(operator.address, fee_amount)
 
     try:
-        raw_tx = await wallet.functions.operatorCall(
-            [
-                await wallet.functions.nonces(from_).call(),
-                fee_chain_id,
-                from_,
-                USDC[fee_chain_id],
-                0,
-                data,
-            ]
-        ).build_transaction(
-            {
-                "from": OPERATOR.address,
-                "nonce": await fee_w3.eth.get_transaction_count(OPERATOR.address),
-            }
+        tx_hash = await call_with_deploy(
+            fee_chain_id, for_, USDC[fee_chain_id], data, 0
         )
-        tx_hash = await fee_w3.eth.send_raw_transaction(
-            OPERATOR.sign_transaction(raw_tx).rawTransaction
-        )
-        logger.info(f"Fee tx: {fee_chain_id}:{tx_hash.hex()}")
+        logger.info(f"Fee tx: {fee_chain_id}:{tx_hash}")
     except Exception as e:
         logger.warning(f"Cant pay fee, {e}")
 
@@ -172,42 +196,10 @@ async def call(
     to = w3.to_checksum_address(to)
 
     logger.info(f"{chain_id=}, {for_=}, {to=}, {value=}, {data=}")
-
-    factory: AsyncContract = w3.eth.contract(FACTORY, abi=factory_abi)
-    [deployed, from_] = await factory.functions.getWallet(for_, 0).call()
-
-    tx_params = {
-        "from": OPERATOR.address,
-        "nonce": await w3.eth.get_transaction_count(OPERATOR.address),
-    }
-
-    if not deployed:
-        raw_tx = await factory.functions.createWalletAndCall(
-            for_,
-            0,
-            [0, chain_id, from_, to, value, data],
-        ).build_transaction(tx_params)
-        tx_hash = await w3.eth.send_raw_transaction(
-            OPERATOR.sign_transaction(raw_tx).rawTransaction
-        )
-    else:
-        contract: AsyncContract = w3.eth.contract(from_, abi=wallet_abi)
-        raw_tx = await contract.functions.operatorCall(
-            [
-                await contract.functions.nonces(from_).call(),
-                chain_id,
-                from_,
-                to,
-                value,
-                data,
-            ]
-        ).build_transaction(tx_params)
-        tx_hash = await w3.eth.send_raw_transaction(
-            OPERATOR.sign_transaction(raw_tx).rawTransaction
-        )
-
-    bg.add_task(claim_fee, tx_hash.hex(), chain_id, 421614, 0.1, from_)
-    bg.add_task(claim_fee, tx_hash.hex(), chain_id, 84532, 0.1, from_)
-
+    tx_hash = await call_with_deploy(chain_id, for_, to, data, value)
     logger.info(f"Call tx: {chain_id}:{tx_hash.hex()}")
-    return tx_hash.hex()
+
+    bg.add_task(claim_fee, tx_hash.hex(), chain_id, 421614, 0.1, for_)
+    bg.add_task(claim_fee, tx_hash.hex(), chain_id, 84532, 0.1, for_)
+
+    return tx_hash
