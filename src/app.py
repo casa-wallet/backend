@@ -131,10 +131,8 @@ async def claim_fee(
         "0xa9059cbb"
         + encode(
             ["address", "uint256"], [OPERATOR.address, int(fee_amount * 1e6)]
-        ).hex()[2:]
+        ).hex()
     )  # transfer(operator.address, fee_amount)
-
-    logger.info(f"transfer call: {data=}")
 
     try:
         raw_tx = await wallet.functions.operatorCall(
