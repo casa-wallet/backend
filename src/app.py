@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from eth_abi import encode
 from web3 import AsyncWeb3
 from web3.contract import AsyncContract
+from web3.middleware.geth_poa import async_geth_poa_middleware
 
 from config import RPCS, OPERATOR, FACTORY, USDC
 
@@ -113,7 +114,10 @@ token_abi = []
 
 
 def get_w3(chain_id: int) -> AsyncWeb3:
-    return AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(RPCS[chain_id]))
+    return AsyncWeb3(
+        AsyncWeb3.AsyncHTTPProvider(RPCS[chain_id]),
+        middlewares=[async_geth_poa_middleware],
+    )
 
 
 async def get_wallet_address(chain_id: int, for_: str):
