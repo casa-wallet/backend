@@ -149,7 +149,7 @@ async def call_with_deploy(chain_id: int, for_: str, to: str, data: str, value: 
         )
 
     async with lock:
-        raw_tx = fn.build_transaction(
+        raw_tx = await fn.build_transaction(
             {
                 "from": OPERATOR.address,
                 "nonce": await w3.eth.get_transaction_count(OPERATOR.address),
