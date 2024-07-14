@@ -71,6 +71,13 @@ factory_abi = [
 ]
 wallet_abi = [
     {
+        "inputs": [{"internalType": "address", "name": "owner", "type": "address"}],
+        "name": "nonces",
+        "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
         "inputs": [
             {
                 "components": [
@@ -90,7 +97,7 @@ wallet_abi = [
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function",
-    }
+    },
 ]
 
 
