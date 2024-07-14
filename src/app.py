@@ -1,4 +1,5 @@
 import logging
+import asyncio
 
 from fastapi import FastAPI, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,7 +10,7 @@ from web3.contract import AsyncContract
 from config import RPCS, OPERATOR, FACTORY, USDC
 
 logger = logging.getLogger("app")
-
+lock = asyncio.Lock()
 
 app = FastAPI()
 app.add_middleware(
@@ -126,14 +127,10 @@ async def call_with_deploy(chain_id: int, for_: str, to: str, data: str, value: 
     w3 = get_w3(chain_id)
 
     (deployed, from_) = await get_wallet_address(chain_id, for_)
-    tx_params = {
-        "from": OPERATOR.address,
-        "nonce": await w3.eth.get_transaction_count(OPERATOR.address),
-    }
 
     if deployed:
         contract: AsyncContract = w3.eth.contract(from_, abi=wallet_abi)
-        raw_tx = await contract.functions.operatorCall(
+        fn = contract.functions.operatorCall(
             [
                 await contract.functions.nonces(from_).call(),
                 chain_id,
@@ -142,21 +139,26 @@ async def call_with_deploy(chain_id: int, for_: str, to: str, data: str, value: 
                 value,
                 data,
             ]
-        ).build_transaction(tx_params)
+        )
     else:
         factory: AsyncContract = w3.eth.contract(FACTORY, abi=factory_abi)
-        raw_tx = await factory.functions.createWalletAndCall(
+        fn = factory.functions.createWalletAndCall(
             for_,
             0,
             [0, chain_id, from_, to, value, data],
-        ).build_transaction(tx_params)
+        )
+
+    async with lock:
+        raw_tx = fn.build_transaction(
+            {
+                "from": OPERATOR.address,
+                "nonce": await w3.eth.get_transaction_count(OPERATOR.address),
+            }
+        )
         tx_hash = await w3.eth.send_raw_transaction(
             OPERATOR.sign_transaction(raw_tx).rawTransaction
         )
 
-    tx_hash = await w3.eth.send_raw_transaction(
-        OPERATOR.sign_transaction(raw_tx).rawTransaction
-    )
     return tx_hash.hex()
 
 
