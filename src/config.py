@@ -8,6 +8,7 @@ logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 RPCS = {
     421614: "https://sepolia-rollup.arbitrum.io/rpc",
     84532: "https://sepolia.base.org",
+    534351: "https://sepolia-rpc.scroll.io",
 }
 
 USDC = {
