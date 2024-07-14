@@ -197,7 +197,7 @@ async def call(
 
     logger.info(f"{chain_id=}, {for_=}, {to=}, {value=}, {data=}")
     tx_hash = await call_with_deploy(chain_id, for_, to, data, value)
-    logger.info(f"Call tx: {chain_id}:{tx_hash.hex()}")
+    logger.info(f"Call tx: {chain_id}:{tx_hash}")
 
     bg.add_task(claim_fee, tx_hash.hex(), chain_id, 421614, 0.1, for_)
     bg.add_task(claim_fee, tx_hash.hex(), chain_id, 84532, 0.1, for_)
