@@ -103,6 +103,8 @@ wallet_abi = [
 
 @app.get("/call")
 async def call(chain_id: int, for_: str, to: str, value: int, data: str) -> str:
+    logger.info(f"{chain_id=}, {for_=}, {to=}, {value=}, {data=}")
+
     w3 = AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(RPCS[chain_id]))
     operator = Account.from_key(OPERATOR_PK)
 
