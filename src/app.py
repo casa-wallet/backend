@@ -1,12 +1,12 @@
 import logging
 
-from fastapi import FastAPI
+from fastapi import FastAPI, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from eth_account import Account
+from eth_abi import encode
 from web3 import AsyncWeb3
 from web3.contract import AsyncContract
 
-from config import RPCS, OPERATOR_PK, FACTORY
+from config import RPCS, OPERATOR, FACTORY, USDC
 
 logger = logging.getLogger("app")
 
@@ -108,24 +108,69 @@ wallet_abi = [
         "type": "function",
     },
 ]
+token_abi = []
+
+
+def get_w3(chain_id: int) -> AsyncWeb3:
+    return AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(RPCS[chain_id]))
+
+
+async def claim_fee(
+    tx_hash: str, tx_chain_id: int, fee_chain_id: int, fee_amount: float, from_: str
+):
+    tx_w3 = get_w3(tx_chain_id)
+    await tx_w3.eth.wait_for_transaction_receipt(tx_hash)
+
+    fee_w3 = get_w3(fee_chain_id)
+    wallet = fee_w3.eth.contract(from_, abi=wallet_abi)
+
+    data = (
+        "0xa9059cbb"
+        + encode(
+            ["address", "uint256"], [OPERATOR.address, int(fee_amount * 1e6)]
+        ).hex()[2:]
+    )  # transfer(operator.address, fee_amount)
+
+    try:
+        raw_tx = await wallet.functions.operatorCall(
+            [
+                await wallet.functions.nonces(from_).call(),
+                fee_chain_id,
+                from_,
+                USDC[fee_chain_id],
+                0,
+                data,
+            ]
+        ).build_transaction(
+            {
+                "from": OPERATOR.address,
+                "nonce": await fee_w3.eth.get_transaction_count(OPERATOR.address),
+            }
+        )
+        tx_hash = await fee_w3.eth.send_raw_transaction(
+            OPERATOR.sign_transaction(raw_tx).rawTransaction
+        )
+        logger.info(f"Fee tx: {fee_chain_id}:{tx_hash.hex()}")
+    except Exception as e:
+        logger.warning(f"Cant pay fee, {e}")
 
 
 @app.get("/call")
-async def call(chain_id: int, for_: str, to: str, value: int, data: str) -> str:
-    w3 = AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(RPCS[chain_id]))
+async def call(
+    chain_id: int, for_: str, to: str, value: int, data: str, bg: BackgroundTasks
+) -> str:
+    w3 = get_w3(chain_id)
     for_ = w3.to_checksum_address(for_)
     to = w3.to_checksum_address(to)
 
     logger.info(f"{chain_id=}, {for_=}, {to=}, {value=}, {data=}")
 
-    operator = Account.from_key(OPERATOR_PK)
-
     factory: AsyncContract = w3.eth.contract(FACTORY, abi=factory_abi)
     [deployed, from_] = await factory.functions.getWallet(for_, 0).call()
 
     tx_params = {
-        "from": operator.address,
-        "nonce": await w3.eth.get_transaction_count(operator.address),
+        "from": OPERATOR.address,
+        "nonce": await w3.eth.get_transaction_count(OPERATOR.address),
     }
 
     if not deployed:
@@ -135,7 +180,7 @@ async def call(chain_id: int, for_: str, to: str, value: int, data: str) -> str:
             [0, chain_id, from_, to, value, data],
         ).build_transaction(tx_params)
         tx_hash = await w3.eth.send_raw_transaction(
-            operator.sign_transaction(raw_tx).rawTransaction
+            OPERATOR.sign_transaction(raw_tx).rawTransaction
         )
     else:
         contract: AsyncContract = w3.eth.contract(from_, abi=wallet_abi)
@@ -150,7 +195,11 @@ async def call(chain_id: int, for_: str, to: str, value: int, data: str) -> str:
             ]
         ).build_transaction(tx_params)
         tx_hash = await w3.eth.send_raw_transaction(
-            operator.sign_transaction(raw_tx).rawTransaction
+            OPERATOR.sign_transaction(raw_tx).rawTransaction
         )
 
+    bg.add_task(claim_fee, tx_hash.hex(), chain_id, 421614, 0.1, from_)
+    bg.add_task(claim_fee, tx_hash.hex(), chain_id, 84532, 0.1, from_)
+
+    logger.info(f"Call tx: {chain_id}:{tx_hash.hex()}")
     return tx_hash.hex()
