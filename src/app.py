@@ -100,7 +100,7 @@ async def call(chain_id: int, for_: str, to: str, value: int, data: str) -> str:
     operator = Account.from_key(OPERATOR_PK)
 
     factory: AsyncContract = w3.eth.contract(FACTORY, abi=factory_abi)
-    [deployed, from_] = await factory.functions.getWallet(for_, 0)
+    [deployed, from_] = await factory.functions.getWallet(for_, 0).call()
 
     tx_params = {
         "from": operator.address,
